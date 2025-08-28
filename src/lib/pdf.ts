@@ -1,22 +1,19 @@
-// lib/pdf.ts
-import * as pdfjsLib from "pdfjs-dist";
-import { getDocument } from "pdfjs-dist";
+import PDFParser from "pdf2json";
 
-// Worker fix for serverless environments (like Vercel)
-pdfjsLib.GlobalWorkerOptions.workerSrc = require("pdfjs-dist/build/pdf.worker.js");
+export function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const pdfParser = new PDFParser();
 
-export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-  const loadingTask = getDocument({ data: buffer });
-  const pdf = await loadingTask.promise;
+    pdfParser.on("pdfParser_dataError", (err) => reject(err.parserError));
+    pdfParser.on("pdfParser_dataReady", (pdfData) => {
+      const text = pdfData.Pages.map((page: any) =>
+        page.Texts.map((t: any) =>
+          decodeURIComponent(t.R.map((r: any) => r.T).join(""))
+        ).join(" ")
+      ).join("\n");
+      resolve(text);
+    });
 
-  let fullText = "";
-
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const content = await page.getTextContent();
-    const pageText = content.items.map((i: any) => i.str).join(" ");
-    fullText += pageText + "\n";
-  }
-
-  return fullText;
+    pdfParser.parseBuffer(buffer);
+  });
 }

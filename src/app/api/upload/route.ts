@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+
     const pdfData = await extractTextFromPDF(buffer);
 
     const sessionId = crypto.randomUUID();
