@@ -5,6 +5,10 @@ import { getEmbedding } from "@/lib/embeddings";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { extractTextFromPDF } from "@/lib/pdf";
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -33,15 +37,28 @@ export async function POST(req: NextRequest) {
     // embed and push to Pinecone
     const index = pinecone.Index("pdf-chat"); // create "pdf-chat" index in Pinecone first
 
-    const vectors = await Promise.all(
-      chunks.map(async (chunk, i) => ({
-        id: `${sessionId}-${i}`,
-        values: await getEmbedding(chunk),
-        metadata: { text: chunk, sessionId },
-      }))
-    );
+    const vectors: any[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const values = await getEmbedding(chunks[i]);
 
-    await index.upsert(vectors);
+      vectors.push({
+        id: `${sessionId}-${i}`,
+        values,
+        metadata: { text: chunks[i], sessionId },
+      });
+
+      // push every 5 embeddings, then sleep
+      if (i % 5 === 0 && i !== 0) {
+        await index.upsert(vectors);
+        vectors.length = 0; // clear after pushing
+        await sleep(5000); // wait 2s before next batch
+      }
+    }
+
+    // push any leftover
+    if (vectors.length > 0) {
+      await index.upsert(vectors);
+    }
 
     return NextResponse.json({ sessionId, chunks: chunks.length });
   } catch (error: any) {
